@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Progressive Resource Hog</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+            color: white;
+            font-family: monospace;
+        }
+
+        #levelDisplay {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            font-size: 20px;
+        }
+
+        .particle {
+            position: absolute;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.9), rgba(255, 0, 0, 0.3));
+            animation: spin 0.2s linear infinite, glow 0.1s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg) translateX(50vw);
+            }
+            100% {
+                transform: rotate(360deg) translateX(50vw);
+            }
+        }
+
+        @keyframes glow {
+            0% {
+                opacity: 0.4;
+                box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+            }
+            50% {
+                opacity: 1;
+                box-shadow: 0 0 30px rgba(255, 255, 255, 1);
+            }
+            100% {
+                opacity: 0.4;
+                box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+            }
+        }
+
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+    </style>
+</head>
+<body>
+<div id="levelDisplay">Level: 1</div>
+<canvas id="glCanvas"></canvas>
+<script>
+    let level = 1;
+    let workers = [];
+    const levelDisplay = document.getElementById("levelDisplay");
+
+    // Increase load every 10 seconds
+    function increaseLevel() {
+        level++;
+        levelDisplay.textContent = `Level: ${level}`;
+        updateLoad();
+        setTimeout(increaseLevel, 10000);
+    }
+
+    setTimeout(increaseLevel, 10000);
+
+    // 1. CPU Stress: Progressive computations
+    function cpuHog() {
+        let result = 0;
+        const start = Date.now();
+        while (Date.now() - start < 50) {
+            // Increase complexity with level
+            for (let j = 0; j < level; j++) {
+                result += Math.sin(Math.cos(Math.tan(Math.random()))) ** (Math.random() * level);
+                result += Math.sqrt(Math.log(Math.random() + 1));
+            }
+        }
+        setTimeout(cpuHog, 0);
+    }
+
+    cpuHog();
+
+    // 2. Web Workers: Add more with each level
+    const workerCode = `
+            self.onmessage = function(e) {
+                const level = e.data.level;
+                let result = 0;
+                while (true) {
+                    for (let j = 0; j < level; j++) {
+                        result += Math.sin(Math.cos(Math.tan(Math.random()))) ** (Math.random() * level);
+                        result += Math.sqrt(Math.log(Math.random() + 1));
+                    }
+                    if (result > 1e6) result = 0; // Prevent overflow
+                }
+            };
+        `;
+    const blob = new Blob([workerCode], {type: "application/javascript"});
+    const workerURL = URL.createObjectURL(blob);
+
+    function updateWorkers() {
+        // Terminate old workers
+        workers.forEach(worker => worker.terminate());
+        workers = [];
+        // Add new workers based on level
+        const targetWorkers = Math.min(level * navigator.hardwareConcurrency, 32);
+        for (let i = 0; i < targetWorkers; i++) {
+            const worker = new Worker(workerURL);
+            worker.postMessage({level});
+            workers.push(worker);
+        }
+    }
+
+    updateWorkers();
+
+    // 3. DOM Stress: Add particles with each level
+    function addParticles() {
+        const particleCount = level * 100;
+        document.querySelectorAll(".particle").forEach(p => p.remove());
+        for (let i = 0; i < particleCount; i++) {
+            const div = document.createElement("div");
+            div.className = "particle";
+            div.style.left = `${Math.random() * 100}vw`;
+            div.style.top = `${Math.random() * 100}vh`;
+            document.body.appendChild(div);
+        }
+    }
+
+    addParticles();
+
+    // 4. WebGL Stress: Progressive shader complexity
+    const canvas = document.getElementById("glCanvas");
+    const gl = canvas.getContext("webgl");
+    if (!gl) {
+        console.error("WebGL not supported");
+    } else {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Vertex Shader
+        const vsSource = `
+                attribute vec2 a_position;
+                void main() {
+                    gl_Position = vec4(a_position, 0.0, 1.0);
+                }
+            `;
+        // Fragment Shader: Complexity increases with level
+        const fsSource = `
+                precision highp float;
+                uniform float u_time;
+                uniform vec2 u_resolution;
+                uniform float u_level;
+                void main() {
+                    vec2 uv = gl_FragCoord.xy / u_resolution;
+                    float color = 0.0;
+                    for (float i = 0.0; i < u_level * 10.0; i++) {
+                        color += sin(uv.x * cos(u_time + i) * 10.0) * cos(uv.y * sin(u_time + i) * 10.0);
+                        color += fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+                    }
+                    gl_FragColor = vec4(vec3(color * 0.1, color * 0.05, color * 0.2), 1.0);
+                }
+            `;
+
+        // Compile shaders
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vsSource);
+        gl.compileShader(vertexShader);
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER); // Corrected
+        gl.shaderSource(fragmentShader, fsSource);
+        gl.compileShader(fragmentShader);
+
+        // Create program
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        // Set up geometry
+        const vertices = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+        const positionLoc = gl.getAttribLocation(program, "a_position");
+        gl.enableVertexAttribArray(positionLoc);
+        gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+        // Uniforms
+        const timeLoc = gl.getUniformLocation(program, "u_time");
+        const resolutionLoc = gl.getUniformLocation(program, "u_resolution");
+        const levelLoc = gl.getUniformLocation(program, "u_level");
+        gl.uniform2f(resolutionLoc, canvas.width, canvas.height);
+
+        // Render loop
+        function render() {
+            gl.uniform1f(timeLoc, performance.now() / 1000);
+            gl.uniform1f(levelLoc, level);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            requestAnimationFrame(render);
+        }
+
+        render();
+
+        // Resize canvas
+        window.addEventListener("resize", () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.uniform2f(resolutionLoc, canvas.width, canvas.height);
+        });
+    }
+</script>
+</body>
+</html>
