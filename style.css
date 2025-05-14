@@ -1,0 +1,33 @@
+.morpionContainer {
+    display: grid;
+    grid-template-columns: repeat(3, 150px);
+    grid-template-rows: repeat(3, 150px);
+    width: 450px;
+    height: 450px;
+    gap: 10px;
+}
+
+.game {
+    display: flex;
+    justify-content: center;
+}
+
+.caseMorpion {
+    width: 150px;
+    height: 150px;
+    display: flex;
+    border: 10px solid black;
+    flex-wrap: wrap;
+}
+
+.rond {
+    background-image: url("assets/rond.png");
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.croix {
+    background-image: url("assets/croix.png");
+    background-repeat: no-repeat;
+    background-position: center;
+}
